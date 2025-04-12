@@ -1,13 +1,5 @@
 import { ThrottlerStorage } from '@nestjs/throttler';
-import { Redis } from 'ioredis';
-
-export interface ThrottlerRecord {
-  totalHits: number;
-  timeToExpire: number;
-  blockDuration: number;
-  isBlocked: boolean;
-  timeToBlockExpire: number;
-}
+import Redis from 'ioredis';
 
 export class RedisStorage implements ThrottlerStorage {
   private readonly redis: Redis;
@@ -32,12 +24,9 @@ export class RedisStorage implements ThrottlerStorage {
   async increment(
     key: string,
     ttl: number,
-    limit: number,
-    blockDuration: number,
-    throttlerName: string,
-  ): Promise<ThrottlerRecord> {
-    const redisKey = `throttle:${throttlerName}:${key}`;
-    const blockKey = `block:${throttlerName}:${key}`;
+  ): Promise<{ totalHits: number; timeToExpire: number; isBlocked: boolean; timeToBlockExpire: number }> {
+    const redisKey = `throttle:${key}`;
+    const blockKey = `block:${key}`; // ब्लॉकिंग के लिए अलग कुंजी
 
     try {
       const pipeline = this.redis.pipeline();
@@ -56,46 +45,41 @@ export class RedisStorage implements ThrottlerStorage {
       let timeToBlockExpire = Number(results[3][1]);
 
       if (timeToExpire === -1) {
-        await this.redis.expire(redisKey, ttl);
+        await this.redis.expire(redisKey, ttl / 1000); // ttl को सेकंड में कन्वर्ट करें
         timeToExpire = ttl;
       }
 
-      if (totalHits > limit && !isBlocked) {
-        await this.redis.set(blockKey, '1', 'EX', blockDuration);
-        timeToBlockExpire = blockDuration;
-        return {
-          totalHits,
-          timeToExpire,
-          blockDuration,
-          isBlocked: true,
-          timeToBlockExpire,
-        };
+      if (timeToBlockExpire === -1) {
+        timeToBlockExpire = 0; // अगर ब्लॉक कुंजी की समय-सीमा नहीं है, तो 0 सेट करें
       }
 
       return {
         totalHits,
         timeToExpire,
-        blockDuration: isBlocked ? timeToBlockExpire : 0,
         isBlocked,
-        timeToBlockExpire: isBlocked ? timeToBlockExpire : 0,
+        timeToBlockExpire,
       };
     } catch (error) {
       console.error('Error in Redis increment:', error);
       return {
         totalHits: 0,
         timeToExpire: ttl,
-        blockDuration: 0,
         isBlocked: false,
         timeToBlockExpire: 0,
-      }; // डिफ़ॉल्ट रिकॉर्ड लौटाएँ
+      };
     }
   }
 
-  async getRecord(_key: string): Promise<number[]> {
-    return [];
+  async getRecord(key: string): Promise<number[]> {
+    const redisKey = `throttle:${key}`;
+    const records = await this.redis.lrange(redisKey, 0, -1);
+    return records.map(Number);
   }
 
-  async addRecord(_key: string, _ttl: number): Promise<void> {
-    // वैकल्पिक
+  async addRecord(key: string, ttl: number): Promise<void> {
+    const redisKey = `throttle:${key}`;
+    const now = Date.now();
+    await this.redis.rpush(redisKey, now.toString());
+    await this.redis.expire(redisKey, ttl / 1000);
   }
 }

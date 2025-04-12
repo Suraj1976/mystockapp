@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
-import { ThrottlerModule } from '@nestjs/throttler';
-import { RedisStorage } from './redis-storage'; // सही पाथ की जाँच करें
+import { ThrottlerModule, ThrottlerModuleOptions } from '@nestjs/throttler';
+import { RedisStorage } from './redis-storage'; // सही पाथ सुनिश्चित करें
 import { AuthModule } from './module/auth/auth.module';
 import { UsersModule } from './module/users/users.module';
 import { RolesModule } from './module/roles/roles.module';
@@ -44,19 +44,21 @@ import { AppService } from './app.service';
     }),
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        throttlers: [
-          {
-            ttl: 60, // थ्रॉटलिंग की समय सीमा (सेकंड में)
-            limit: 100, // अधिकतम रिक्वेस्ट्स की सीमा
-          },
-        ],
-        storage: new RedisStorage({
-          host: '127.0.0.1',
-          port: 6380, // सही पोर्ट यहाँ सेट करें
-          ttl: 60,
-        }),
-      }),
+      useFactory: async (configService: ConfigService): Promise<ThrottlerModuleOptions> => {
+        return {
+          throttlers: [
+            {
+              ttl: 60 * 1000, // मिलीसेकंड में
+              limit: 100, // प्रति ttl में अनुरोधों की संख्या
+            },
+          ],
+          storage: new RedisStorage({
+            host: configService.get<string>('REDIS_HOST') || 'localhost',
+            port: configService.get<number>('REDIS_PORT') || 6379,
+            ttl: 60 * 1000, // मिलीसेकंड में
+          }),
+        };
+      },
       inject: [ConfigService],
     }),
     AuthModule,

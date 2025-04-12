@@ -1,22 +1,30 @@
 import { Module } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { RedisStorage } from './redis-storage';
+import { RateLimitService } from './rate-limit.service';
+import { RateLimitGuard } from './guards/rate-limit.guard';
+import { RedisStorage } from './redis-storage'; // सही पाथ सुनिश्चित करें
 
 @Module({
   imports: [
-    ThrottlerModule.forRoot({
-      throttlers: [
-        {
-          ttl: 60, // सेकंड में
-          limit: 100, // प्रति ttl में अनुरोधों की संख्या
-        },
-      ],
-      storage: new RedisStorage({
-        host: '127.0.0.1',
-        port: 6380,
-        ttl: 60,
-      }),
+    ThrottlerModule.forRootAsync({
+      useFactory: () => {
+        return {
+          throttlers: [
+            {
+              ttl: 60 * 1000, // मिलीसेकंड में
+              limit: 100, // प्रति ttl में अनुरोधों की संख्या
+            },
+          ],
+          storage: new RedisStorage({
+            host: process.env.REDIS_HOST || 'localhost',
+            port: parseInt(process.env.REDIS_PORT, 10) || 6379,
+            ttl: 60 * 1000, // मिलीसेकंड में
+          }),
+        };
+      },
     }),
   ],
+  providers: [RateLimitService, RateLimitGuard],
+  exports: [RateLimitGuard],
 })
 export class RateLimitingModule {}
