@@ -1,96 +1,87 @@
 import { ThrottlerStorage } from '@nestjs/throttler';
-import { Redis } from 'ioredis';
+import Redis from 'ioredis';
 
-export interface ThrottlerRecord {
+// Define the interface for ThrottlerStorageRecord
+export interface ThrottlerStorageRecord {
   totalHits: number;
   timeToExpire: number;
-  blockDuration: number;
   isBlocked: boolean;
   timeToBlockExpire: number;
 }
 
+// Define options interface for RedisStorage
+interface RedisStorageOptions {
+  host: string;
+  port: number;
+  password?: string;
+  db?: number;
+}
+
 export class RedisStorage implements ThrottlerStorage {
   private readonly redis: Redis;
-  private readonly ttl: number;
 
-  constructor(options: { host: string; port: number; ttl: number }) {
+  constructor(options: RedisStorageOptions) {
     this.redis = new Redis({
       host: options.host,
       port: options.port,
-      retryStrategy: (times) => Math.min(times * 100, 2000),
+      password: options.password,
+      db: options.db || 0,
     });
-    this.ttl = options.ttl;
 
     this.redis.on('error', (err) => {
-      console.error('Redis error:', err.message);
+      console.error('Redis connection error:', err.message);
     });
   }
 
-  async increment(
-    key: string,
-    ttl: number,
-    limit: number,
-    blockDuration: number,
-    throttlerName: string,
-  ): Promise<ThrottlerRecord> {
-    const redisKey = `throttle:${throttlerName}:${key}`;
-    const blockKey = `block:${throttlerName}:${key}`;
-
+  async increment(key: string, ttl: number): Promise<ThrottlerStorageRecord> {
     try {
+      const redisKey = `throttle:${key}`;
+      const blockKey = `block:${key}`;
+
       const pipeline = this.redis.pipeline();
-      pipeline.incr(redisKey);
-      pipeline.ttl(redisKey);
-      pipeline.exists(blockKey);
-      pipeline.ttl(blockKey);
+      pipeline.incr(redisKey); // Increment hit count
+      pipeline.ttl(redisKey); // Get TTL of the key
+      pipeline.exists(blockKey); // Check if the key is blocked
+      pipeline.ttl(blockKey); // Get TTL of the block key
 
       const results = await pipeline.exec();
 
-      if (!results) throw new Error('Redis pipeline failed');
+      // Handle pipeline results with type safety
+      const totalHits = Number(results?.[0]?.[1] ?? 0);
+      let timeToExpire = Number(results?.[1]?.[1] ?? ttl);
+      const isBlocked = Boolean(results?.[2]?.[1] ?? false);
+      let timeToBlockExpire = Number(results?.[3]?.[1] ?? 0);
 
-      const totalHits = Number(results[0][1]);
-      let timeToExpire = Number(results[1][1]);
-      const isBlocked = Boolean(results[2][1]);
-      let timeToBlockExpire = Number(results[3][1]);
-
+      // If TTL is not set (-1), set it to the provided ttl
       if (timeToExpire === -1) {
         await this.redis.expire(redisKey, ttl);
         timeToExpire = ttl;
       }
 
-      if (totalHits > limit && !isBlocked) {
-        await this.redis.set(blockKey, '1', 'EX', blockDuration);
-        timeToBlockExpire = blockDuration;
-        return {
-          totalHits,
-          timeToExpire,
-          blockDuration,
-          isBlocked: true,
-          timeToBlockExpire,
-        };
+      // If block TTL is not set (-1), set it to 0
+      if (timeToBlockExpire === -1) {
+        timeToBlockExpire = 0;
       }
 
       return {
         totalHits,
         timeToExpire,
-        blockDuration: isBlocked ? timeToBlockExpire : 0,
         isBlocked,
-        timeToBlockExpire: isBlocked ? timeToBlockExpire : 0,
+        timeToBlockExpire,
       };
-    } catch (error) {
-      console.error('Error in Redis increment:', error);
-      return {
-        totalHits: 0,
-        timeToExpire: ttl,
-        blockDuration: 0,
-        isBlocked: false,
-        timeToBlockExpire: 0,
-      };
+    } catch (error: unknown) {
+      console.error('Error in RedisStorage.increment:', error);
+      throw new Error('Failed to increment throttle record in Redis');
     }
   }
 
-  async getRecord(_key: string): Promise<number[]> {
-    return [];
+  // Method to clean up Redis connection
+  async destroy(): Promise<void> {
+    try {
+      await this.redis.quit();
+      console.log('Redis connection closed');
+    } catch (error: unknown) {
+      console.error('Error closing Redis connection:', error);
+    }
   }
-
-  async addRecord(_key: string, _ttl: number): Promise<void> {}
 }

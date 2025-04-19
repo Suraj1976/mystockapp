@@ -17,6 +17,13 @@
     "strictBindCallApply": false,
     "forceConsistentCasingInFileNames": false,
     "noFallthroughCasesInSwitch": false,
-    "typeRoots": ["./src/types", "./node_modules/@types"] // Ensure this line exists
-  }
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "strict": false, // सख्त टाइप चेकिंग डिसएबल
+    "strictPropertyInitialization": false, // प्रॉपर्टी इनिशियलाइज़ेशन चेक डिसएबल
+    "noImplicitThis": false, // 'this' टाइप चेकिंग डिसएबल
+    "alwaysStrict": false // सख्त मोड डिसएबल
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
 }

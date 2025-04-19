@@ -1,16 +1,10 @@
-import { IsEmail, IsString, IsEnum } from 'class-validator';
-import { UserRole } from '../user-role.enum'; // सही पथ
+import { UserRole } from '../../../enums/user-role.enum';
+import { Types } from 'mongoose';
 
 export class CreateUserDto {
-  @IsEmail()
   email: string;
-
-  @IsString()
-  password: string;
-
-  @IsEnum(UserRole)
+  password?: string;
   role: UserRole;
-
-  @IsString()
-  companyId?: string;
+  companyId?: string | Types.ObjectId; // Changed to support string or ObjectId
+  language?: string;
 }

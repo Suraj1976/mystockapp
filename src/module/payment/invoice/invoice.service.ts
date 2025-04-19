@@ -1,14 +1,24 @@
 import { Injectable } from '@nestjs/common';
-import * as PDFKit from 'pdfkit';
+import PDFKit from 'pdfkit';
+import { createWriteStream } from 'fs';
+import { join } from 'path';
 
 @Injectable()
 export class InvoiceService {
-  async generateInvoice(paymentId: string, amount: number) {
+  async generateInvoice(paymentId: string, amount: number): Promise<string> {
     const doc = new PDFKit();
-    doc.text(`Invoice for Payment ID: ${paymentId}`);
-    doc.text(`Amount: ${amount}`);
+    const filePath = join(__dirname, '..', '..', '..', 'invoices', `invoice-${paymentId}-${Date.now()}.pdf`);
+    const stream = createWriteStream(filePath);
+
+    doc.pipe(stream);
+    doc.fontSize(25).text('Invoice', 100, 100);
+    doc.fontSize(16).text(`Payment ID: ${paymentId}`, 100, 150);
+    doc.fontSize(16).text(`Amount: $${amount}`, 100, 180);
     doc.end();
-    // Save or send the PDF
-    console.log(`Generated invoice for payment ${paymentId}`);
+
+    return new Promise((resolve, reject) => {
+      stream.on('finish', () => resolve(filePath));
+      stream.on('error', (err) => reject(err));
+    });
   }
 }

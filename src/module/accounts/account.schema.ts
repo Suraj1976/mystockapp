@@ -1,9 +1,9 @@
-import { Schema, Prop, SchemaFactory } from '@nestjs/mongoose';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
 export type AccountDocument = Account & Document;
 
-@Schema()
+@Schema({ timestamps: true })
 export class Account {
   @Prop({ type: Types.ObjectId, ref: 'Package', required: true })
   packageId: Types.ObjectId;

@@ -1,9 +1,10 @@
 import { Schema, Prop, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
+import { UserRole } from '../../enums/user-role.enum';
 
 export type UserDocument = User & Document;
 
-@Schema()
+@Schema({ timestamps: true })
 export class User {
   @Prop({ required: true, unique: true })
   email: string;
@@ -11,8 +12,8 @@ export class User {
   @Prop({ required: true })
   password: string;
 
-  @Prop({ required: true })
-  role: string;
+  @Prop({ required: true, enum: Object.values(UserRole) })
+  role: UserRole;
 
   @Prop({ type: Types.ObjectId, ref: 'Company' })
   companyId: Types.ObjectId;
@@ -26,7 +27,7 @@ export class User {
   @Prop({ default: 'en' })
   language: string;
 
-  @Prop({ default: true }) // पहली बार लॉगिन के लिए फ्लैग
+  @Prop({ default: true })
   isFirstLogin: boolean;
 }
 

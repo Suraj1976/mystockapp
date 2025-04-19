@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Payment, PaymentDocument } from './schemas/payment.schema';
@@ -12,19 +12,28 @@ export class PaymentService {
   ) {}
 
   async processPayment(paymentDetails: any) {
-    // Implement payment gateway (e.g., Stripe)
-    const payment = new this.paymentModel({
-      amount: paymentDetails.amount,
-      status: 'success',
-      timestamp: new Date(),
-      userId: paymentDetails.userId,
-    });
-    await payment.save();
-    await this.invoiceService.generateInvoice(payment._id.toString(), paymentDetails.amount);
-    return { success: true };
+    try {
+      const payment = new this.paymentModel({
+        amount: paymentDetails.amount,
+        status: 'success',
+        timestamp: new Date(),
+        userId: paymentDetails.userId,
+      });
+      await payment.save();
+      const invoicePath = await this.invoiceService.generateInvoice(payment._id.toString(), paymentDetails.amount);
+      return { success: true, invoicePath };
+    } catch (error) {
+      console.error('Error in processPayment:', error);
+      throw new InternalServerErrorException('Error processing payment');
+    }
   }
 
   async getPaymentHistory(userId: string) {
-    return this.paymentModel.find({ userId }).exec();
+    try {
+      return this.paymentModel.find({ userId }).exec();
+    } catch (error) {
+      console.error('Error in getPaymentHistory:', error);
+      throw new InternalServerErrorException('Error fetching payment history');
+    }
   }
 }

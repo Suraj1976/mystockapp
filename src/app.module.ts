@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
-import { ThrottlerModule, ThrottlerModuleOptions } from '@nestjs/throttler';
-import { RedisStorage } from './redis-storage'; // सही पाथ सुनिश्चित करें
+import { ThrottlerModule } from '@nestjs/throttler';
+import { RedisStorage } from './redis-storage';
 import { AuthModule } from './module/auth/auth.module';
 import { UsersModule } from './module/users/users.module';
 import { RolesModule } from './module/roles/roles.module';
@@ -44,22 +44,19 @@ import { AppService } from './app.service';
     }),
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: async (configService: ConfigService): Promise<ThrottlerModuleOptions> => {
-        return {
-          throttlers: [
-            {
-              ttl: 60 * 1000, // मिलीसेकंड में
-              limit: 100, // प्रति ttl में अनुरोधों की संख्या
-            },
-          ],
-          storage: new RedisStorage({
-            host: configService.get<string>('REDIS_HOST') || 'localhost',
-            port: configService.get<number>('REDIS_PORT') || 6379,
-            ttl: 60 * 1000, // मिलीसेकंड में
-          }),
-        };
-      },
       inject: [ConfigService],
+      useFactory: async (configService: ConfigService) => ({
+        throttlers: [
+          {
+            ttl: configService.get<number>('THROTTLE_TTL') || 60,
+            limit: configService.get<number>('THROTTLE_LIMIT') || 10,
+          },
+        ],
+        storage: new RedisStorage({
+          host: configService.get<string>('REDIS_HOST') || 'localhost',
+          port: configService.get<number>('REDIS_PORT') || 6380,
+        }),
+      }),
     }),
     AuthModule,
     UsersModule,
@@ -70,7 +67,7 @@ import { AppService } from './app.service';
     PackagesModule,
     AdminModule,
     ManagerModule,
-    SalesModule,
+    SalesModule, // यहाँ पहले से मौजूद है, जो सही है
     SuperSuperAdminModule,
     AccountsModule,
     EmailModule,

@@ -1,8 +1,10 @@
+import { UserRole } from '../../../enums/user-role.enum';
 import { Types } from 'mongoose';
 
 export class UpdateUserDto {
   email?: string;
-  role?: string;
-  companyId?: Types.ObjectId; // companyId को ObjectId टाइप किया
-  language?: string; // language प्रॉपर्टी जोड़ी
+  password?: string;
+  role?: UserRole;
+  companyId?: string | Types.ObjectId; // Changed to support string or ObjectId
+  language?: string;
 }

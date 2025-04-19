@@ -1,30 +1,21 @@
-import { Schema, Prop, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { Document, Types } from 'mongoose';
 
 export type ClientDocument = Client & Document;
 
-@Schema()
+@Schema({ timestamps: true })
 export class Client {
   @Prop({ required: true })
   name: string;
 
-  @Prop({ required: true, unique: true })
+  @Prop({ required: true })
   email: string;
 
-  @Prop({ required: true })
-  companyId: string;
+  @Prop({ type: Types.ObjectId, ref: 'Company', required: true })
+  companyId: Types.ObjectId;
 
-  @Prop({ required: true })
-  tenantId: string;
-
-  @Prop({ required: true })
-  expiryDate: Date;
-
-  @Prop({ required: true })
-  createdBy: string;
-
-  @Prop({ default: true })
-  isActive: boolean;
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  createdBy: Types.ObjectId;
 }
 
 export const ClientSchema = SchemaFactory.createForClass(Client);

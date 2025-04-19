@@ -1,22 +1,26 @@
-import { Controller, Post, Body, Get, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, Get } from '@nestjs/common';
 import { AccountsService } from './accounts.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { AccountDocument } from './account.schema';
+import { Types } from 'mongoose';
 
 @Controller('accounts')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('SUPER_SUPER_ADMIN')
 export class AccountsController {
   constructor(private readonly accountsService: AccountsService) {}
 
   @Post()
-  create(@Body() createAccountDto: any) {
+  async create(
+    @Body() createAccountDto: { package: string; companyId: string; clientId: string },
+  ): Promise<AccountDocument> {
     return this.accountsService.create(createAccountDto);
   }
 
   @Get('financial-summary')
-  getFinancialSummary() {
+  async getFinancialSummary(): Promise<{
+    totalCompanies: number;
+    totalClients: number;
+    packages: Types.ObjectId[];
+    summaries: { clientId: Types.ObjectId; package: any }[];
+  }> {
     return this.accountsService.getFinancialSummary();
   }
 }

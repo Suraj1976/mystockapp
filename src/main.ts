@@ -1,11 +1,23 @@
+import 'reflect-metadata'; // सबसे पहले इंपोर्ट करना जरूरी है
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Server } from 'net';
+import { ValidationPipe } from '@nestjs/common'; // ग्लोबल ValidationPipe के लिए
 
 async function bootstrap() {
   const port = process.env.PORT || 3000;
 
-  // पोर्ट को खाली करने का लॉजिक
+  const app = await NestFactory.create(AppModule);
+
+  // ग्लोबल ValidationPipe सेटअप करना
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true, // केवल DTO में डिफाइन प्रॉपर्टीज़ को स्वीकार करता है
+      forbidNonWhitelisted: true, // DTO में न डिफाइन प्रॉपर्टीज़ होने पर त्रुटि देता है
+      transform: true, // इनपुट डेटा को DTO क्लास इंस्टैंस में ट्रांसफॉर्म करता है
+    }),
+  );
+
   const server = new Server();
   server.listen(port, () => {
     server.close();
@@ -54,7 +66,6 @@ async function bootstrap() {
   });
 
   async function startApp() {
-    const app = await NestFactory.create(AppModule);
     await app.listen(port);
     console.log(`Application is running on: http://localhost:${port}`);
   }

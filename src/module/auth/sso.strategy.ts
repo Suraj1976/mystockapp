@@ -1,38 +1,47 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Strategy, VerifyWithoutRequest } from '@node-saml/passport-saml';
 import { PassportStrategy } from '@nestjs/passport';
-import { Strategy } from 'passport-saml';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AuthService } from './auth.service';
 
 @Injectable()
 export class SamlStrategy extends PassportStrategy(Strategy, 'saml') {
-  constructor(
-    private configService: ConfigService,
-    private authService: AuthService,
-  ) {
-    const cert = configService.get<string>('SAML_CERT');
-    const privateKey = configService.get<string>('SAML_PRIVATE_KEY');
+  constructor(configService: ConfigService) {
+    const entryPoint = configService.get<string>('SAML_ENTRY_POINT');
+    const issuer = configService.get<string>('SAML_ISSUER');
+    const callbackUrl = configService.get<string>('SAML_CALLBACK_URL');
+    const idpCert = configService.get<string>('SAML_CERT');
+    const decryptionPvk = configService.get<string>('SAML_PRIVATE_KEY');
 
-    // cert की जाँच करें
-    if (!cert) {
-      throw new InternalServerErrorException('SAML_CERT is required for SAML configuration');
-    }
+    const verify: VerifyWithoutRequest = async (profile: any, done) => {
+      const user = {
+        email: profile.email || profile['urn:oid:0.9.2342.19200300.100.1.3'],
+        firstName: profile.givenName || profile['urn:oid:2.5.4.42'],
+        lastName: profile.sn || profile['urn:oid:2.5.4.4'],
+      };
+      done(null, user);
+    };
 
-    super({
-      entryPoint: configService.get<string>('SAML_ENTRY_POINT'),
-      issuer: configService.get<string>('SAML_ISSUER'),
-      callbackUrl: configService.get<string>('SAML_CALLBACK_URL'),
-      cert: cert,
-      identifierFormat: 'urn:oasis:names:tc:SAML:2.0:nameid-format:emailAddress',
-      decryptionPvk: privateKey || undefined,
-      privateKey: privateKey || undefined,
-      acceptedClockSkewMs: -1,
-    });
+    super(
+      {
+        entryPoint,
+        issuer,
+        callbackUrl,
+        idpCert,
+        decryptionPvk: decryptionPvk || undefined,
+        authnRequestBinding: 'HTTP-Redirect',
+        acceptedClockSkewMs: -1,
+        identifierFormat: 'urn:oasis:names:tc:SAML:2.0:nameid-format:transient',
+      },
+      verify,
+    );
   }
 
-  async validate(profile: any) {
-    const email = profile.email || profile['urn:oid:0.9.2342.19200300.100.1.3'];
-    const user = { email, role: 'USER' };
-    return this.authService.generateJwtForSso(user);
+  async validate(profile: any, done: (err: any, user?: any) => void): Promise<void> {
+    const user = {
+      email: profile.email || profile['urn:oid:0.9.2342.19200300.100.1.3'],
+      firstName: profile.givenName || profile['urn:oid:2.5.4.42'],
+      lastName: profile.sn || profile['urn:oid:2.5.4.4'],
+    };
+    done(null, user);
   }
 }

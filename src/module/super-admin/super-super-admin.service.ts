@@ -1,4 +1,6 @@
 import { Injectable, InternalServerErrorException, BadRequestException } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { CompaniesService } from '../companies/companies.service';
 import { UsersService } from '../users/users.service';
 import { PackagesService } from '../packages/packages.service';
@@ -8,6 +10,7 @@ import { CreatePackageDto } from '../packages/dto/create-package.dto';
 import { randomBytes } from 'crypto';
 import { Company, CompanyDocument } from '../companies/company.schema';
 import { Package, PackageDocument } from '../packages/packages.schema';
+import { UserRole } from '../../enums/user-role.enum';
 
 @Injectable()
 export class SuperSuperAdminService {
@@ -16,6 +19,7 @@ export class SuperSuperAdminService {
     private readonly usersService: UsersService,
     private readonly packagesService: PackagesService,
     private readonly emailService: EmailService,
+    @InjectModel(Company.name) private companyModel: Model<CompanyDocument>,
   ) {}
 
   async createCompanyWithAdmin(createCompanyDto: CreateCompanyDto & { package: CreatePackageDto }, createdBy: string) {
@@ -36,13 +40,13 @@ export class SuperSuperAdminService {
       const admin = await this.usersService.create({
         email: createCompanyDto.email,
         password: tempPassword,
-        role: 'COMPANY_ADMIN',
-        companyId: company._id,
-        language: createCompanyDto.language || 'en',
+        role: UserRole.COMPANY_ADMIN,
+        companyId: company._id.toString(), // _id को string में कनवर्ट करें
+        language: createCompanyDto.language || 'hi',
       });
       console.log('Admin created:', admin);
 
-      const language = createCompanyDto.language || 'en';
+      const language = createCompanyDto.language || 'hi';
       let emailSubject: string;
       let emailText: string;
       let emailHtml: string;
@@ -130,9 +134,8 @@ export class SuperSuperAdminService {
       }
 
       return { company, adminId: admin._id, tempPassword };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error in createCompanyWithAdmin:', error);
-      // डुप्लिकेट की त्रुटि को हैंडल करें
       if (error.code === 11000 && error.keyPattern && error.keyPattern.email) {
         throw new BadRequestException(`A company with email ${createCompanyDto.email} already exists`);
       }

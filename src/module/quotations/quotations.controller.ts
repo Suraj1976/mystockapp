@@ -1,29 +1,49 @@
-import { Controller, Post, Body, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request } from '@nestjs/common';
 import { QuotationsService } from './quotations.service';
 import { CreateQuotationDto } from './dto/create-quotation.dto';
 import { UpdateQuotationDto } from './dto/update-quotation.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { UserDocument } from '../users/user.schema';
-import { UserRole } from '../users/user-role.enum';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { User } from '../auth/decorators/user.decorator';
+import { Roles } from '../../decorators/roles.decorator';
+import { UserRole } from '../../enums/user-role.enum';
 
 @Controller('quotations')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.COMPANY_ADMIN, UserRole.SALES_STAFF)
 export class QuotationsController {
-  constructor(private quotationsService: QuotationsService) {}
+  constructor(private readonly quotationsService: QuotationsService) {}
 
   @Post()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.MANAGER)
-  create(@Body() createQuotationDto: CreateQuotationDto, @User() user: UserDocument) {
-    return this.quotationsService.create(createQuotationDto, user);
+  async create(@Request() req, @Body() createQuotationDto: CreateQuotationDto) {
+    return this.quotationsService.create(createQuotationDto, {
+      userId: req.user.userId,
+      role: req.user.role,
+    });
   }
 
   @Get()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.MANAGER)
-  findAll(@User() user: UserDocument) {
-    return this.quotationsService.findAll(user);
+  findAll() {
+    return this.quotationsService.findAll();
+  }
+
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.quotationsService.findOne(id);
+  }
+
+  @Patch(':id')
+  async update(@Param('id') id: string, @Request() req, @Body() updateQuotationDto: UpdateQuotationDto) {
+    return this.quotationsService.update(id, updateQuotationDto, {
+      userId: req.user.userId,
+      role: req.user.role,
+    });
+  }
+
+  @Delete(':id')
+  async remove(@Param('id') id: string, @Request() req) {
+    return this.quotationsService.remove(id, {
+      userId: req.user.userId,
+      role: req.user.role,
+    });
   }
 }

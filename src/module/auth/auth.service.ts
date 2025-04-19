@@ -2,10 +2,10 @@ import { Injectable, InternalServerErrorException, UnauthorizedException } from 
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { randomBytes } from 'crypto';
 import { LoginDto } from './dto/login.dto';
 import { EmailService } from '../email/email.service';
 import { UserDocument } from '../users/user.schema';
+import { UserRole } from '../../enums/user-role.enum';
 
 @Injectable()
 export class AuthService {
@@ -15,7 +15,7 @@ export class AuthService {
     private emailService: EmailService,
   ) {}
 
-  async registerSuperAdmin(email: string, password: string) {
+  async registerSuperAdmin(email: string, password: string): Promise<{ message: string; userId: string }> {
     try {
       console.log('Checking if user exists with email:', email);
       const existingUser = await this.usersService.findByEmail(email);
@@ -29,12 +29,12 @@ export class AuthService {
       const user = await this.usersService.create({
         email,
         password,
-        role: 'SUPER_SUPER_ADMIN',
+        role: UserRole.SUPER_SUPER_ADMIN,
       });
       console.log('Super admin created:', user);
 
-      return { message: 'Super admin registered successfully', userId: user._id };
-    } catch (error) {
+      return { message: 'Super admin registered successfully', userId: user._id.toString() };
+    } catch (error: unknown) {
       console.error('Error in registerSuperAdmin:', error);
       if (error instanceof UnauthorizedException) {
         throw error;
@@ -57,13 +57,16 @@ export class AuthService {
         return result;
       }
       return null;
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error in validateUser:', error);
+      if (error instanceof UnauthorizedException || error instanceof InternalServerErrorException) {
+        throw error;
+      }
       throw new InternalServerErrorException('Error validating user');
     }
   }
 
-  async login(loginDto: LoginDto) {
+  async login(loginDto: LoginDto): Promise<{ access_token: string; isFirstLogin: boolean }> {
     try {
       console.log('Attempting login for email:', loginDto.email);
       const user: UserDocument = await this.usersService.findByEmail(loginDto.email);
@@ -86,9 +89,8 @@ export class AuthService {
       const payload = { email: user.email, sub: user._id.toString(), role: user.role, isFirstLogin: user.isFirstLogin };
       const accessToken = this.jwtService.sign(payload);
 
-      // पहली बार लॉगिन पर यूज़र की भाषा के आधार पर HTML ईमेल
       if (user.isFirstLogin) {
-        const language = user.language || 'en';
+        const language = user.language || 'hi';
         let welcomeSubject: string;
         let welcomeText: string;
         let welcomeHtml: string;
@@ -159,22 +161,22 @@ export class AuthService {
 
         try {
           await this.emailService.sendEmail(user.email, welcomeSubject, welcomeText, welcomeHtml);
-        } catch (emailError) {
-          console.error('Failed to send welcome email:', emailError);
+        } catch (emailError: unknown) {
+          console.error('Failed to send welcome email:', emailError instanceof Error ? emailError.message : 'Unknown error');
         }
       }
 
       return { access_token: accessToken, isFirstLogin: user.isFirstLogin };
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error in login:', error);
-      if (error instanceof UnauthorizedException) {
+      if (error instanceof UnauthorizedException || error instanceof InternalServerErrorException) {
         throw error;
       }
       throw new InternalServerErrorException('Error during login');
     }
   }
 
-  async changePassword(email: string, oldPassword: string, newPassword: string) {
+  async changePassword(email: string, oldPassword: string, newPassword: string): Promise<{ message: string }> {
     try {
       const user: UserDocument = await this.usersService.findByEmail(email);
       if (!user) {
@@ -218,59 +220,107 @@ export class AuthService {
       `;
       try {
         await this.emailService.sendEmail(superAdminEmail, notificationSubject, notificationText, notificationHtml);
-      } catch (emailError) {
-        console.error('Failed to send password change notification:', emailError);
+      } catch (emailError: unknown) {
+        console.error('Failed to send notification email:', emailError instanceof Error ? emailError.message : 'Unknown error');
       }
 
       return { message: 'Password changed successfully' };
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error in changePassword:', error);
+      if (error instanceof UnauthorizedException || error instanceof InternalServerErrorException) {
+        throw error;
+      }
       throw new InternalServerErrorException('Error changing password');
     }
   }
 
-  async requestOtp(email: string) {
+  async requestOtp(email: string): Promise<{ message: string }> {
     try {
-      const otp = randomBytes(3).toString('hex').toUpperCase();
-      const expires = new Date(Date.now() + 10 * 60 * 1000);
-      await this.usersService.requestOtp(email, otp, expires);
-      return { message: 'OTP sent to email' };
-    } catch (error) {
-      console.error('Error in requestOtp:', error);
-      throw new InternalServerErrorException('Error requesting OTP');
-    }
-  }
-
-  async resetPassword(email: string, otp: string, newPassword: string) {
-    try {
-      return this.usersService.resetPassword(email, otp, newPassword);
-    } catch (error) {
-      console.error('Error in resetPassword:', error);
-      throw new InternalServerErrorException('Error resetting password');
-    }
-  }
-
-  async generateJwtForSso(user: any) {
-    try {
-      const existingUser = await this.usersService.findByEmail(user.email);
-      let userId;
-
-      if (existingUser) {
-        userId = existingUser._id.toString();
-      } else {
-        const newUser = await this.usersService.create({
-          email: user.email,
-          password: randomBytes(6).toString('hex'),
-          role: user.role || 'USER',
-        });
-        userId = newUser._id.toString();
+      const user = await this.usersService.findByEmail(email);
+      if (!user) {
+        throw new UnauthorizedException('User not found');
       }
 
-      const payload = { email: user.email, sub: userId, role: user.role };
-      return { access_token: this.jwtService.sign(payload) };
-    } catch (error) {
-      console.error('Error in generateJwtForSso:', error);
-      throw new InternalServerErrorException('Error generating JWT for SSO');
+      // Generate OTP and expiration time
+      const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit OTP
+      const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // OTP expires in 10 minutes
+
+      // Save OTP and expiration to user
+      await this.usersService.requestOtp(email, otp, otpExpires);
+
+      // Send OTP via email
+      const language = user.language || 'hi';
+      let subject: string;
+      let text: string;
+      let html: string;
+
+      if (language === 'hi') {
+        subject = 'आपका OTP रीसेट पासवर्ड के लिए';
+        text = `
+          नमस्ते ${email},
+
+          आपका OTP पासवर्ड रीसेट करने के लिए: ${otp}
+          यह OTP 10 मिनट तक वैध है।
+
+          धन्यवाद,
+          सुपर एडमिन टीम
+        `;
+        html = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px; background-color: #f9f9f9;">
+            <div style="text-align: center; padding-bottom: 20px;">
+              <h2 style="color: #4CAF50;">आपका OTP रीसेट पासवर्ड के लिए</h2>
+              <p style="font-size: 16px; color: #333;">नमस्ते ${email},</p>
+            </div>
+            <div style="background-color: #ffffff; padding: 20px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+              <p style="font-size: 14px; color: #555;">
+                आपका OTP पासवर्ड रीसेट करने के लिए: <strong>${otp}</strong><br>
+                यह OTP 10 मिनट तक वैध है।
+              </p>
+            </div>
+            <div style="text-align: center; padding-top: 20px;">
+              <p style="font-size: 14px; color: #777;">धन्यवाद,<br>सुपर एडमिन टीम</p>
+            </div>
+          </div>
+        `;
+      } else {
+        subject = 'Your OTP for Password Reset';
+        text = `
+          Hello ${email},
+
+          Your OTP for password reset: ${otp}
+          This OTP is valid for 10 minutes.
+
+          Thank you,
+          Super Admin Team
+        `;
+        html = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px; background-color: #f9f9f9;">
+            <div style="text-align: center; padding-bottom: 20px;">
+              <h2 style="color: #4CAF50;">Your OTP for Password Reset</h2>
+              <p style="font-size: 16px; color: #333;">Hello ${email},</p>
+            </div>
+            <div style="background-color: #ffffff; padding: 20px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+              <p style="font-size: 14px; color: #555;">
+                Your OTP for password reset: <strong>${otp}</strong><br>
+                This OTP is valid for 10 minutes.
+              </p>
+            </div>
+            <div style="text-align: center; padding-top: 20px;">
+              <p style="font-size: 14px; color: #777;">Thank you,<br>Super Admin Team</p>
+            </div>
+          </div>
+        `;
+      }
+
+      await this.emailService.sendEmail(email, subject, text, html);
+
+      return { message: 'OTP sent successfully to your email' };
+    } catch (error: unknown) {
+      console.error('Error in requestOtp:', error);
+      if (error instanceof UnauthorizedException || error instanceof InternalServerErrorException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Error sending OTP');
     }
   }
 }
